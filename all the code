@@ -1,0 +1,115 @@
+import numpy as np
+import random
+
+# Constants
+GRID_SIZE = 32
+NUM_OBJECTS = 10
+POINTS_PER_OBJECT = 10
+HALF_POINTS = POINTS_PER_OBJECT // 2
+
+class Object:
+    def __init__(self, value, gender, obj_idx):
+        self.value = value  # 'x', 'y', or 'X'
+        self.grid = np.zeros((GRID_SIZE, GRID_SIZE), dtype=int)
+        self.points = self._generate_points(gender, obj_idx)
+        self._fill_grid()
+
+    def _generate_points(self, gender, obj_idx):
+        points = []
+        if obj_idx == 0:  # Object 0 is gender
+            points = [(random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)) for _ in range(POINTS_PER_OBJECT)]
+        elif obj_idx == 9:  # Object 9 is 'X'
+            points = [(random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)) for _ in range(POINTS_PER_OBJECT)]
+        else:  # Objects 1-8: 5 gender points, 5 'X' points
+            gender_points = [(random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)) for _ in range(HALF_POINTS)]
+            x_points = [(random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)) for _ in range(HALF_POINTS)]
+            points = gender_points + x_points
+        return points
+
+    def _fill_grid(self):
+        for idx, (row, col) in enumerate(self.points):
+            # Fill row for 'x'/'y', column for 'X'
+            if self.value in ['x', 'y']:
+                self._fill_row(row, col)
+            elif self.value == 'X':
+                self._fill_column(row, col)
+
+    def _fill_row(self, row, col):
+        self.grid[row, col] = 0
+        for i in range(1, GRID_SIZE):
+            right_val = min(9, i) if i <= 9 else 9 - (i - 9)
+            left_val = min(9, i) if i <= 9 else 9 - (i - 9)
+            if col + i < GRID_SIZE:
+                self.grid[row, col + i] = right_val
+            if col - i >= 0:
+                self.grid[row, col - i] = left_val
+
+    def _fill_column(self, row, col):
+        self.grid[row, col] = 0
+        for i in range(1, GRID_SIZE):
+            down_val = min(9, i) if i <= 9 else 9 - (i - 9)
+            up_val = min(9, i) if i <= 9 else 9 - (i - 9)
+            if row + i < GRID_SIZE:
+                self.grid[row + i, col] = down_val
+            if row - i >= 0:
+                self.grid[row - i, col] = up_val
+
+    def get_points_by_value(self, target_value):
+        if self.value == target_value or (self.value in ['x', 'y'] and target_value in ['x', 'y']):
+            return self.points[:HALF_POINTS] if target_value in ['x', 'y'] else self.points[HALF_POINTS:]
+        return self.points if self.value == 'X' else []
+
+class Agent:
+    def __init__(self, gender=None):
+        self.gender = gender if gender else random.choice(['yX', 'xX'])
+        self.objects = self._initialize_objects()
+
+    def _initialize_objects(self):
+        gender_val = 'y' if self.gender == 'yX' else 'x'
+        objects = [Object(gender_val, self.gender, 0)]  # Object 0 is gender
+        # Objects 1-8: 5 'x'/'y', 3 'X' (adjusting for total count)
+        values = [gender_val] * 5 + ['X'] * 3
+        random.shuffle(values)
+        for i in range(1, 9):
+            objects.append(Object(values[i-1], self.gender, i))
+        objects.append(Object('X', self.gender, 9))  # Object 9 is 'X'
+        return objects
+
+    def combine(self, other):
+        new_agent = Agent()  # Random gender
+        new_gender = new_agent.gender[0]  # 'x' or 'y'
+        for i in range(NUM_OBJECTS):
+            parent = self if random.random() < 0.5 else other
+            if i == 0:  # Gender object
+                new_agent.objects[i] = Object(new_gender, new_agent.gender, 0)
+            elif i == 9:  # 'X' object
+                new_agent.objects[i] = Object('X', new_agent.gender, 9)
+            else:
+                # Determine which points to pass based on gender rules
+                if self.gender == 'yX' and new_agent.gender == 'yX':  # Male to Male: pass 'y'
+                    points = parent.objects[i].get_points_by_value('y')
+                elif self.gender == 'yX' and new_agent.gender == 'xX':  # Male to Female: pass 'X'
+                    points = parent.objects[i].get_points_by_value('X')
+                elif self.gender == 'xX' and new_agent.gender == 'xX':  # Female to Female: pass 'x'
+                    points = parent.objects[i].get_points_by_value('x')
+                elif self.gender == 'xX' and new_agent.gender == 'yX':  # Female to Male: pass 'X'
+                    points = parent.objects[i].get_points_by_value('X')
+                # Take 5 random points
+                selected_points = random.sample(points, min(5, len(points)))
+                new_obj = Object(parent.objects[i].value, new_agent.gender, i)
+                new_obj.points = selected_points + [(random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)) 
+                                                    for _ in range(POINTS_PER_OBJECT - len(selected_points))]
+                new_obj._fill_grid()
+                new_agent.objects[i] = new_obj
+        return new_agent
+
+# Test the system
+if __name__ == "__main__":
+    agent1 = Agent('yX')  # Male
+    agent2 = Agent('xX')  # Female
+    child = agent1.combine(agent2)
+    print(f"Parent 1 Gender: {agent1.gender}")
+    print(f"Parent 2 Gender: {agent2.gender}")
+    print(f"Child Gender: {child.gender}")
+    print(f"Child Object 0 Value: {child.objects[0].value}")
+    print(f"Child Object 9 Value: {child.objects[9].value}")
